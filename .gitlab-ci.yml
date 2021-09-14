@@ -1,0 +1,33 @@
+stages:
+  - test
+  - deploy
+
+default:
+  image: ghcr.io/binkhq/python:3.9
+
+
+test:style: &test
+  stage: test
+  before_script:
+    - pipenv install --dev --system --deploy --ignore-pipfile
+    - pip freeze
+  script:
+    - flake8
+    - black --line-length 120 --check .
+    - isort --check --line-length 120 --profile black .
+
+
+test:type-check:
+  <<: *test
+  script:
+    - mypy uploader.py
+
+
+deploy:
+  stage: deploy
+  needs: ["test:style", "test:type-check"]
+  image: binkcore.azurecr.io/copy2blobstorage:latest
+  script:
+    - mkdir sftp
+    - mv uploader.py sftp/
+    - copy --container releases sftp sftp

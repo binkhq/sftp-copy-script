@@ -1,0 +1,20 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+inotify = "*"
+azure-storage-blob = "*"
+
+[dev-packages]
+pytest = "*"
+pytest-cov = "*"
+flake8 = "*"
+black = "==21.4b1"
+isort = "*"
+mypy = "*"
+
+
+[requires]
+python_version = "3.9"
