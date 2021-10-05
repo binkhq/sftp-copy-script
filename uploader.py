@@ -7,7 +7,6 @@ import os.path
 import pwd
 import re
 
-from pathlib import Path
 from time import sleep
 from typing import Dict, List, Optional, Tuple, TypedDict, Union, cast
 
@@ -22,19 +21,15 @@ UPLOAD_ATTEMPTS = 3
 USERS = {f"{usr.pw_dir}/": usr for usr in pwd.getpwall() if usr.pw_uid >= 4000}  # type: Dict[str, pwd.struct_passwd]
 
 
-# Typehints for old v1 config and v2 config
-class ConfigV1Value(TypedDict):
+class ConfigSimpleValue(TypedDict):
+    type: str
     path: str
     dsn: str
     container: str
     slug: str
 
 
-class ConfigV2SimpleValue(ConfigV1Value):
-    type: str
-
-
-class ConfigV2RegexValue(TypedDict):
+class ConfigRegexValue(TypedDict):
     type: str
     base_path: str
     regex: str
@@ -43,16 +38,12 @@ class ConfigV2RegexValue(TypedDict):
     dest_path: str
 
 
-ConfigV1 = Dict[str, ConfigV1Value]
-
-
-class ConfigV2(TypedDict):
-    version: int
-    watches: List[Union[ConfigV2SimpleValue, ConfigV2RegexValue]]
+class Config(TypedDict):
+    watches: List[Union[ConfigSimpleValue, ConfigRegexValue]]
     directories: List[str]
 
 
-def get_config(filepath: str = "config.json") -> Tuple[int, dict]:
+def get_config(filepath: str = "config.json") -> Config:
     """
     Reads config from file and gets config version
     """
@@ -60,9 +51,8 @@ def get_config(filepath: str = "config.json") -> Tuple[int, dict]:
         config = json.load(fp)
 
     assert isinstance(config, dict)
-    version = config.get("version", 1)
 
-    return version, config
+    return cast(Config, config)
 
 
 def make_dir(directory: str, user: Optional[pwd.struct_passwd] = None) -> bool:
@@ -128,13 +118,13 @@ def upload_file(src_path: str, dsn: str, container: str, dest_path: str) -> None
     return None
 
 
-def get_watch_job(path: str, config: ConfigV2) -> Tuple[Optional[ConfigV2SimpleValue], Optional[ConfigV2RegexValue]]:
+def get_watch_job(path: str, config: Config) -> Tuple[Optional[ConfigSimpleValue], Optional[ConfigRegexValue]]:
     """
     Finds a watch job from a list based on a filepath given
     """
     for watch_job in config["watches"]:
         if watch_job["type"] == "simple":
-            watch_job_simple = cast(ConfigV2SimpleValue, watch_job)
+            watch_job_simple = cast(ConfigSimpleValue, watch_job)
             watch_job_simple_path = watch_job_simple["path"].rstrip("/") + "/"
 
             prefix = os.path.commonprefix([watch_job_simple["path"], path])
@@ -143,7 +133,7 @@ def get_watch_job(path: str, config: ConfigV2) -> Tuple[Optional[ConfigV2SimpleV
                 return watch_job_simple, None
 
         elif watch_job["type"] == "regex":
-            watch_job_regex = cast(ConfigV2RegexValue, watch_job)
+            watch_job_regex = cast(ConfigRegexValue, watch_job)
             watch_job_regex_path = watch_job_regex["base_path"].rstrip("/") + "/"
 
             prefix = os.path.commonprefix([watch_job_regex_path, path])
@@ -160,7 +150,7 @@ def watch_directory_recursively(watcher: inotify.adapters.Inotify, base: str) ->
     return None
 
 
-def run_version2(watcher: inotify.adapters.Inotify, config: ConfigV2) -> None:
+def run_version(watcher: inotify.adapters.Inotify, config: Config) -> None:
     """
     Watch files for version 2
     """
@@ -169,10 +159,10 @@ def run_version2(watcher: inotify.adapters.Inotify, config: ConfigV2) -> None:
 
     for watch_job in config["watches"]:
         if watch_job["type"] == "simple":
-            watch_job_simple = cast(ConfigV2SimpleValue, watch_job)
+            watch_job_simple = cast(ConfigSimpleValue, watch_job)
             watch_directory_recursively(watcher, watch_job_simple["path"])
         elif watch_job["type"] == "regex":
-            watch_job_regex = cast(ConfigV2RegexValue, watch_job)
+            watch_job_regex = cast(ConfigRegexValue, watch_job)
             watch_directory_recursively(watcher, watch_job_regex["base_path"])
         else:
             logging.warning(f"Unknown watch job type: {watch_job['type']}")
@@ -215,40 +205,12 @@ def run_version2(watcher: inotify.adapters.Inotify, config: ConfigV2) -> None:
     return None
 
 
-def run_version1(watcher: inotify.adapters.Inotify, config: ConfigV1) -> None:
-    """
-    Watch files for version 1
-    """
-    for data in config.values():
-        watcher.add_watch(data["path"])
-
-    for _, type_names, path, filename in watcher.event_gen(yield_nones=False):
-        if "IN_CLOSE_WRITE" not in type_names:
-            continue
-
-        user = Path(path).parts[2]
-        dsn = config[user]["dsn"]
-        container = config[user]["container"]
-        slug = config["user"]["slug"]
-        blob_name = f"{slug}/{filename}"
-        filepath = os.path.join(path, filename)
-
-        upload_file(filepath, dsn, container, blob_name)
-
-    return None
-
-
 def main() -> None:
-    version, config_dict = get_config()
+    config_dict = get_config()
 
     watcher = inotify.adapters.Inotify()
 
-    if version == 1:
-        run_version1(watcher, cast(ConfigV1, config_dict))
-    elif version == 2:
-        run_version2(watcher, cast(ConfigV2, config_dict))
-    else:
-        logging.error(f"Unhandled config version {version}")
+    run_version(watcher, config_dict)
 
     return None
 

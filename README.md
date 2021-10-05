@@ -4,28 +4,11 @@
 
 Needs `inotify` and `azure-storage-blob`. Expects a file `config.json` to be in the current working directory when the script is ran.
 
-# Version 1
-
-Config:
-```json
-{
-  "some_username": {
-    "path": "/home/some_username/uploads",
-    "dsn": "blobstoragedsn",
-    "container": "blob storage container",
-    "slug": "upload/slug"
-  }
-}
-```
-
 All keys are required. `slug` is used to determine the blob storage upload prefix.
 
-# Version 2
-
 Config:
 ```json
 {
-  "version": 2,
   "watches": [
     {
       "type": "simple",
@@ -49,7 +32,7 @@ Config:
 }
 ```
 
-So the simple watch type works as version 1 does. 
+So the simple watch type just monitors a directory and uploads the filename prefixed by the slug. 
 
 The regex one will watch a base path, and match regex's against the filepath after the base path. I.e if you are watching /home/test and a file 
 gets uploaded to `/home/test/lol/n00b.txt` then the regex will be provided `lol/n00b.txt`. The destination path can be templated and will be provided
